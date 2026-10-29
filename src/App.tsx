@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Compass, X } from 'lucide-react'
-import { AppCtx, Role, Status, ToastHost } from './ui'
-import { Forgot, Landing, Login, RoleSelect, StudentInfo, Timeout } from './Public'
+import { AppCtx, DEV_TOOLS, Role, Status, ToastHost } from './ui'
+import { Forgot, Landing, Login, ResetPassword, RoleSelect, StudentInfo, Timeout } from './Public'
 import { Confirm, Linked, Pending, Register } from './Onboarding'
 import { ActiveScreen, ProfileWizard } from './Profile'
 import { AccessDenied, AddStudentLocked, Dashboard, DashboardIncomplete } from './Dash'
@@ -11,8 +11,11 @@ import { QAReport } from './QAReport'
 import { Admin } from './Admin'
 import { DesignSystem } from './DesignSystem'
 import { AuthUser, landingFor, logout as apiLogout, me } from './api'
+import { supabase } from './supabase'
 
 type T = { id: number; kind: 'success' | 'error' | 'warning' | 'info'; text: string }
+
+const PUBLIC_ROUTES = new Set(['landing', 'login', 'admin-login', 'forgot', 'signup', 'student-info', 'timeout', 'register', 'confirm-email', 'reset-password'])
 
 export default function App() {
   const [route, setRoute] = useState('landing')
@@ -21,16 +24,19 @@ export default function App() {
   const [pct, setPct] = useState(20)
   const [toasts, setToasts] = useState<T[]>([])
   const [menu, setMenu] = useState(false)
-  const [authenticatedRole, setAuthenticatedRole] = useState<Role | 'admin' | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const authenticatedRole = user?.role ?? null
+  // Opened from a password-reset email: don't auto-route the recovery session to a dashboard.
+  const recovering = useRef(window.location.hash.includes('type=recovery'))
 
   // Sets auth state and the landing route together, so the route guard in `go` never sees a stale role.
-  const signIn = useCallback((user: AuthUser) => {
-    const next = landingFor(user)
-    if (next.role) setRole(next.role)
-    if (next.status) setStatus(next.status)
-    if (next.pct !== undefined) setPct(next.pct)
-    setAuthenticatedRole(user.role)
-    setRoute(next.route)
+  const signIn = useCallback((next: AuthUser) => {
+    const landing = landingFor(next)
+    if (landing.role) setRole(landing.role)
+    setStatus(landing.status)
+    setPct(landing.pct)
+    setUser(next)
+    setRoute(landing.route)
   }, [])
   const go = useCallback((r: string) => {
     if (r === 'admin' && authenticatedRole !== 'admin') {
@@ -48,18 +54,35 @@ export default function App() {
     setToasts((t) => [...t, { id, kind, text }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500)
   }, [])
+  const loggingOut = useRef(false)
   const logout = useCallback(async () => {
-    await apiLogout()
-    setAuthenticatedRole(null)
-    setRoute('login')
+    loggingOut.current = true
+    try {
+      await apiLogout()
+      setUser(null)
+      setRoute('login')
+    } finally {
+      loggingOut.current = false
+    }
   }, [])
   useEffect(() => { window.scrollTo(0, 0) }, [route])
   useEffect(() => {
     let active = true
     me()
-      .then((user) => { if (active && user) signIn(user) })
+      .then((current) => {
+        if (!active || !current) return
+        if (recovering.current) { setUser(current); setRoute('reset-password') } else signIn(current)
+      })
       .catch((error) => { if (active) toast(error instanceof Error ? error.message : 'Unable to verify your session.', 'error') })
-    return () => { active = false }
+    // Session ended elsewhere (expiry, other tab) or a password-recovery link was opened.
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && !loggingOut.current) {
+        setUser(null)
+        setRoute((r) => (PUBLIC_ROUTES.has(r) ? r : 'timeout'))
+      }
+      if (event === 'PASSWORD_RECOVERY') { recovering.current = true; setRoute('reset-password') }
+    })
+    return () => { active = false; data.subscription.unsubscribe() }
   }, [signIn, toast])
 
   const jump = (r: string, ro?: Role, s?: Status, p?: number) => {
@@ -86,6 +109,8 @@ export default function App() {
     case 'login': screen = <Login />; break
     case 'admin-login': screen = <Login admin />; break
     case 'forgot': screen = <Forgot />; break
+    case 'reset-password': screen = <ResetPassword />; break
+    case 'confirm-email': screen = <Confirm emailSent />; break
     case 'signup': screen = <RoleSelect />; break
     case 'student-info': screen = <StudentInfo />; break
     case 'timeout': screen = <Timeout />; break
@@ -111,13 +136,13 @@ export default function App() {
   }
 
   return (
-    <AppCtx.Provider value={{ route, go, logout, signIn, role, setRole, status, setStatus, pct, setPct, toast }}>
+    <AppCtx.Provider value={{ route, go, logout, signIn, user, updateUser: setUser, role, setRole, status, setStatus, pct, setPct, toast }}>
       {screen}
       <ToastHost toasts={toasts} close={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
-      <button onClick={() => setMenu(true)} aria-label="Open prototype navigator" className="fixed left-3 bottom-20 z-[70] lg:left-auto lg:right-4 flex items-center gap-2 rounded-full bg-navy px-3.5 py-2.5 text-xs font-bold text-white shadow-lg hover:bg-ink lg:bottom-4">
+      {DEV_TOOLS && <button onClick={() => setMenu(true)} aria-label="Open prototype navigator" className="fixed left-3 bottom-20 z-[70] lg:left-auto lg:right-4 flex items-center gap-2 rounded-full bg-navy px-3.5 py-2.5 text-xs font-bold text-white shadow-lg hover:bg-ink lg:bottom-4">
         <Compass size={16} />Prototype
-      </button>
-      {menu && (
+      </button>}
+      {DEV_TOOLS && menu && (
         <div className="fixed inset-0 z-[95] bg-navy/50" onClick={() => setMenu(false)}>
           <aside className="fade-up h-full w-80 max-w-[90%] overflow-y-auto bg-white p-4" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between"><b className="text-navy">Prototype navigator</b><button aria-label="Close" onClick={() => setMenu(false)}><X /></button></div>

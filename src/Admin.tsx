@@ -1,5 +1,5 @@
 import { Back, Crumbs } from './Rooms'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Calendar, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, ClipboardCheck, Clock, FileText, Home, Inbox, LayoutDashboard, Lock,
   MapPin, MoreVertical, Search, Settings, ShieldCheck, Video, XCircle, ZoomIn, ZoomOut, UserCheck, ArrowLeft, Users,
@@ -9,8 +9,14 @@ import {
   Timeline, Toggle, useApp,
 } from './ui'
 import { Shell } from './Shell'
+import { Applicant, listApplicants, setAccountStatus } from './api'
 
-type App = { id: string; name: string; role: Role; date: string; status: Status; email: string; phone: string; loc: string }
+type App = { id: string; ref?: string; name: string; role: Role; date: string; status: Status; email: string; phone: string; loc: string }
+
+const fromApplicant = (a: Applicant): App => ({
+  id: a.id, ref: `TH-${a.role.slice(0, 3).toUpperCase()}-${a.id.slice(0, 6).toUpperCase()}`, name: a.display_name || a.email, role: a.role,
+  date: a.created_at.slice(0, 10), status: a.account_status, email: a.email, phone: a.phone || '—', loc: '—',
+})
 const SEED: App[] = [
   { id: 'TH-TUT-2931', name: 'Rahim Uddin', role: 'tutor', date: '2026-10-24', status: 'pending', email: 'rahim.uddin@example.com', phone: '+880 1712-XXXXXX', loc: 'Dhaka, Mirpur' },
   { id: 'TH-CEN-3184', name: 'Agrabad Academic Care', role: 'center', date: '2026-10-23', status: 'scheduled', email: 'office@agrabadcare.example', phone: '+880 1811-XXXXXX', loc: 'Chattogram, Agrabad' },
@@ -36,17 +42,36 @@ const IV: Iv[] = [
 const ivTone = { Scheduled: 'blue', Completed: 'green', 'No-show': 'red', Rescheduled: 'amber' } as const
 
 export function Admin() {
-  const { toast, go, setRole, setStatus } = useApp()
+  const { toast, go, setRole, setStatus, user } = useApp()
+  // A real admin session works on Supabase data; the prototype navigator keeps the demo seed.
+  const live = user?.role === 'admin'
   const [view, setView] = useState('dashboard')
-  const [apps, setApps] = useState(SEED)
-  const [ivs, setIvs] = useState(IV)
+  const [apps, setApps] = useState<App[]>(live ? [] : SEED)
+  const [loadErr, setLoadErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    setLoadErr('')
+    try { setApps((await listApplicants()).map(fromApplicant)) }
+    catch (error) { setLoadErr(error instanceof Error ? error.message : 'Unable to load applications.') }
+  }, [])
+  useEffect(() => { if (live) void load() }, [live, load])
+  const [ivs, setIvs] = useState<Iv[]>(live ? [] : IV)
   const [sel, setSel] = useState<App | null>(null)
   const [modal, setModal] = useState<null | { kind: 'correct' | 'schedule' | 'approve' | 'reject'; app: App }>(null)
 
-  const update = (id: string, status: Status) => {
-    const target = apps.find((x) => x.id === id)
-    if (target) { setRole(target.role); setStatus(status) }
+  /** Returns false (and toasts) when the server rejects the change, so callers keep their modal open. */
+  const update = async (id: string, status: Status, note?: string) => {
+    if (live) {
+      setBusy(true)
+      try { await setAccountStatus(id, status, note) }
+      catch (error) { toast(error instanceof Error ? error.message : 'Unable to update this application.', 'error'); return false }
+      finally { setBusy(false) }
+    } else {
+      const target = apps.find((x) => x.id === id)
+      if (target) { setRole(target.role); setStatus(status) }
+    }
     setApps((a) => a.map((x) => (x.id === id ? { ...x, status } : x)))
+    return true
   }
   const act = (kind: 'correct' | 'schedule' | 'approve' | 'reject' | 'view' | 'docs', app: App) => {
     if (kind === 'view') { setSel(app); setView('detail'); return }
@@ -57,13 +82,14 @@ export function Admin() {
   const cnt = (f: (a: App) => boolean) => apps.filter(f).length
 
   return (
-    <Shell nav={nav} active={view === 'detail' ? 'applications' : view} onNav={setView} name="Admin Rahman" roleLabel="TuitionHub Administrator" tone="navy">
+    <Shell nav={nav} active={view === 'detail' ? 'applications' : view} onNav={setView} name={user?.display_name || "Admin Rahman"} roleLabel="TuitionHub Administrator" tone="navy">
       {view === 'dashboard' && (
         <div className="space-y-6">
-          <div><h1 className="text-2xl sm:text-3xl">Admin dashboard</h1><p className="text-sm text-mute">Verification overview</p></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl sm:text-3xl">Admin dashboard</h1><p className="text-sm text-mute">{live ? 'Live data from Supabase' : 'Verification overview · demo data'}</p></div>{live && <Button size="sm" variant="secondary" onClick={load}>Refresh</Button>}</div>
+          {loadErr && <Alert kind="error" title="Couldn’t load applications">{loadErr}</Alert>}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <Stat icon={Inbox} label="Total pending applications" value={cnt((a) => a.status === 'pending')} tone="amber" />
-            <Stat icon={FileText} label="New verification requests" value={5} tone="blue" />
+            <Stat icon={FileText} label="Documents requested" value={cnt((a) => a.status === 'documents')} tone="blue" />
             <Stat icon={Calendar} label="Interviews scheduled" value={ivs.filter((i) => i.status === 'Scheduled').length} tone="indigo" />
             <Stat icon={Clock} label="Awaiting final decision" value={cnt((a) => a.status === 'completed')} tone="teal" />
             <Stat icon={CheckCircle2} label="Approved" value={cnt((a) => a.status === 'approved')} tone="green" />
@@ -75,28 +101,27 @@ export function Admin() {
                 <button key={a.id} onClick={() => act('view', a)} className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-slate-50"><Avatar name={a.name} size={36} /><div className="flex-1"><p className="text-sm font-semibold text-navy">{a.name}</p><p className="text-xs text-mute">{ROLE_LABEL[a.role]}</p></div><StatusBadge status={a.status} /></button>))}</div></Card>
             <div className="space-y-4">
               <Card className="space-y-3"><h2 className="text-lg">Quick links</h2><Button className="w-full" onClick={() => { setView('applications') }}><Inbox size={16} />Open pending queue</Button><Button variant="secondary" className="w-full" onClick={() => setView('interviews')}><Calendar size={16} />Upcoming interviews</Button></Card>
-              <Card><h3 className="text-base">Next interview</h3><p className="mt-2 text-sm font-semibold text-navy">Agrabad Academic Care</p><p className="text-sm text-mute">2 Nov · 11:00 AM · In-person</p></Card>
+              <Card><h3 className="text-base">Next interview</h3>{(() => { const n = ivs.find((i) => i.status === 'Scheduled'); return n ? <><p className="mt-2 text-sm font-semibold text-navy">{n.name}</p><p className="text-sm text-mute">{n.date} · {n.time} · {n.type}</p></> : <p className="mt-2 text-sm text-mute">No interviews scheduled.</p> })()}</Card>
             </div>
           </div>
         </div>
       )}
       {view === 'applications' && <AppTable apps={apps} act={act} />}
-      {view === 'detail' && sel && <div className="mb-4 flex justify-end"><Button size="sm" variant="secondary" onClick={() => go('pending')}>Preview what the applicant sees</Button></div>}
+      {view === 'detail' && sel && !live && <div className="mb-4 flex justify-end"><Button size="sm" variant="secondary" onClick={() => go('pending')}>Preview what the applicant sees</Button></div>}
       {view === 'detail' && sel && <Detail app={apps.find((a) => a.id === sel.id)!} act={act} back={() => setView('applications')} home={() => setView('dashboard')} ivs={ivs} />}
       {view === 'interviews' && <Interviews ivs={ivs} setIvs={setIvs} />}
       {view === 'settings' && (
-        <div className="max-w-2xl space-y-5"><h1 className="text-2xl sm:text-3xl">Account settings</h1><Card className="space-y-4"><Field label="Name"><Input defaultValue="Admin Rahman" /></Field><Field label="Email"><Input disabled defaultValue="admin@tuitionhub.example" /></Field><div className="flex items-center justify-between text-sm"><span>Require re-authentication for approvals</span><Toggle on label="Require re-auth" onChange={() => {}} /></div></Card></div>
+        <div className="max-w-2xl space-y-5"><h1 className="text-2xl sm:text-3xl">Account settings</h1><Card className="space-y-4"><Field label="Name"><Input defaultValue={user?.display_name || 'Admin Rahman'} /></Field><Field label="Email"><Input disabled defaultValue={user?.email ?? 'admin@tuitionhub.example'} /></Field><div className="flex items-center justify-between text-sm"><span>Require re-authentication for approvals</span><Toggle on label="Require re-auth" onChange={() => {}} /></div></Card></div>
       )}
 
-      <Correct m={modal} close={() => setModal(null)} done={(a) => { update(a.id, 'correction'); setModal(null); toast(`Correction request sent to ${a.name}.`, 'success') }} />
-      <Schedule m={modal} close={() => setModal(null)} done={(a, iv) => { update(a.id, 'scheduled'); setIvs((x) => [{ ...iv, id: Date.now(), app: a.id, name: a.name, role: a.role }, ...x]); setModal(null); toast(`${iv.type} interview scheduled for ${a.name}.`, 'success') }} />
+      <Correct m={modal} close={() => setModal(null)} done={async (a, msg) => { if (await update(a.id, 'correction', msg)) { setModal(null); toast(`Correction request sent to ${a.name}.`, 'success') } }} />
+      <Schedule m={modal} close={() => setModal(null)} done={async (a, iv) => { if (!(await update(a.id, 'scheduled', `${iv.type} interview · ${iv.date}, ${iv.time}`))) return; setIvs((x) => [{ ...iv, id: Date.now(), app: a.id, name: a.name, role: a.role }, ...x]); setModal(null); toast(`${iv.type} interview scheduled for ${a.name}.`, 'success') }} />
       <Modal open={modal?.kind === 'approve'} onClose={() => setModal(null)} title="Approve this application?"
-        footer={<><Button variant="ghost" onClick={() => setModal(null)}>Cancel</Button><Button onClick={() => { update(modal!.app.id, 'approved'); toast(`${modal!.app.name} approved. They can now complete their profile.`, 'success'); setModal(null) }}>Approve</Button></>}>
-        {modal && <div className="space-y-3 text-sm"><div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3"><Avatar name={modal.app.name} /><div><p className="font-bold text-navy">{modal.app.name}</p><p className="text-mute">{ROLE_LABEL[modal.app.role]} · {modal.app.id}</p></div></div>
+        footer={<><Button variant="ghost" onClick={() => setModal(null)}>Cancel</Button><Button loading={busy} onClick={async () => { const a = modal!.app; if (await update(a.id, 'approved')) { toast(`${a.name} approved. They can now complete their profile.`, 'success'); setModal(null) } }}>Approve</Button></>}>
+        {modal && <div className="space-y-3 text-sm"><div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3"><Avatar name={modal.app.name} /><div><p className="font-bold text-navy">{modal.app.name}</p><p className="text-mute">{ROLE_LABEL[modal.app.role]} · {modal.app.ref ?? modal.app.id}</p></div></div>
           <Alert kind="info">Approval unlocks onboarding only. Operational access still needs a 100% complete profile.</Alert></div>}
       </Modal>
-      <Reject m={modal} close={() => setModal(null)} done={(a) => { update(a.id, 'rejected'); setModal(null); toast(`${a.name} rejected. The applicant was notified with your reason.`, 'warning') }} />
-      <p className="mt-10 text-center text-[11px] text-slate-400">Design note: real authorization is enforced by the backend. Admin controls appear only to administrators.</p>
+      <Reject m={modal} close={() => setModal(null)} done={async (a, reason) => { if (await update(a.id, 'rejected', reason)) { setModal(null); toast(`${a.name} rejected. The applicant will see your reason.`, 'warning') } }} />
     </Shell>
   )
 }
@@ -136,7 +161,7 @@ function AppTable({ apps, act }: { apps: App[]; act: (k: any, a: App) => void })
         {rows.length === 0 ? <Empty title="No applications found" text="Try adjusting the filters or clearing your search." action={<Button variant="secondary" onClick={() => { setQ(''); setRole(''); setSt(''); setDate('') }}>Clear filters</Button>} /> : (<>
           <div className="hidden overflow-visible md:block"><table className="w-full text-left text-sm"><thead className="border-b border-line bg-slate-50 text-xs uppercase tracking-wider text-mute"><tr><th className="px-5 py-3">{th('name', 'Applicant')}</th><th>Role</th><th>{th('date', 'Submitted')}</th><th>Status</th><th>Contact</th><th className="w-12" /></tr></thead>
             <tbody className="divide-y divide-line">{view.map((a) => (
-              <tr key={a.id} className="hover:bg-slate-50/70"><td className="px-5 py-3"><button className="flex items-center gap-3 text-left" onClick={() => act('view', a)}><Avatar name={a.name} size={34} /><span><span className="block font-semibold text-navy">{a.name}</span><span className="text-xs text-mute">{a.id}</span></span></button></td><td>{ROLE_LABEL[a.role]}</td><td>{fmt(a.date)}</td><td><StatusBadge status={a.status} /></td><td className="text-xs text-mute">{a.email}<br />{a.phone}</td><td className="pr-3"><Row a={a} act={act} /></td></tr>))}</tbody></table></div>
+              <tr key={a.id} className="hover:bg-slate-50/70"><td className="px-5 py-3"><button className="flex items-center gap-3 text-left" onClick={() => act('view', a)}><Avatar name={a.name} size={34} /><span><span className="block font-semibold text-navy">{a.name}</span><span className="text-xs text-mute">{a.ref ?? a.id}</span></span></button></td><td>{ROLE_LABEL[a.role]}</td><td>{fmt(a.date)}</td><td><StatusBadge status={a.status} /></td><td className="text-xs text-mute">{a.email}<br />{a.phone}</td><td className="pr-3"><Row a={a} act={act} /></td></tr>))}</tbody></table></div>
           <div className="divide-y divide-line md:hidden">{view.map((a) => (
             <div key={a.id} className="space-y-2 p-4"><div className="flex items-start justify-between"><button className="flex items-center gap-3 text-left" onClick={() => act('view', a)}><Avatar name={a.name} size={38} /><span><span className="block font-semibold text-navy">{a.name}</span><span className="text-xs text-mute">{ROLE_LABEL[a.role]} · {fmt(a.date)}</span></span></button><Row a={a} act={act} /></div><StatusBadge status={a.status} /><p className="text-xs text-mute">{a.email} · {a.phone}</p></div>))}</div>
           <div className="flex items-center justify-between border-t border-line px-5 py-3 text-sm text-mute"><span>{rows.length} results</span><div className="flex items-center gap-2"><Button size="sm" variant="secondary" disabled={cur === 1} onClick={() => setPage(cur - 1)} aria-label="Previous page"><ChevronLeft size={16} /></Button><span>Page {cur} of {pages}</span><Button size="sm" variant="secondary" disabled={cur === pages} onClick={() => setPage(cur + 1)} aria-label="Next page"><ChevronRight size={16} /></Button></div></div></>)}
@@ -154,7 +179,7 @@ function Detail({ app, act, back, home, ivs }: { app: App; act: (k: any, a: App)
   return (
     <div className="space-y-5">
       <div><Back onClick={back} label="All applications" /><Crumbs items={[['Admin Dashboard', home], ['Applications', back], [app.name]]} /></div>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-4"><Avatar name={app.name} size={56} /><div><h1 className="text-2xl">{app.name}</h1><p className="text-sm text-mute">{ROLE_LABEL[app.role]} · {app.id}</p></div></div><StatusBadge status={app.status} big /></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-4"><Avatar name={app.name} size={56} /><div><h1 className="text-2xl">{app.name}</h1><p className="text-sm text-mute">{ROLE_LABEL[app.role]} · {app.ref ?? app.id}</p></div></div><StatusBadge status={app.status} big /></div>
       <Card pad={false}><div className="px-4"><Tabs tabs={['Information', 'Photographs', 'Timeline', 'Interviews', 'Admin notes']} value={tab} onChange={setTab} /></div>
         <div className="p-5 sm:p-6">
           {tab === 'Information' && <dl className="grid gap-4 text-sm sm:grid-cols-2">{[['Name', app.name], ['Email', app.email], ['Phone', app.phone], ['Location', app.loc], ['ID number', '•••• •••• 4821'], ['Submitted', app.date]].map(([a, b]) => <div key={a}><dt className="text-xs text-mute">{a}</dt><dd className="font-semibold text-navy">{b}</dd></div>)}{app.role === 'student' && <div className="sm:col-span-2"><Alert kind="warning" title="No-NID alternative">Guardian-declared: student has no NID. Review the school ID card photo.</Alert></div>}</dl>}
@@ -188,11 +213,11 @@ function Interviews({ ivs, setIvs }: { ivs: Iv[]; setIvs: React.Dispatch<React.S
   )
 }
 
-function Correct({ m, close, done }: { m: any; close: () => void; done: (a: App) => void }) {
+function Correct({ m, close, done }: { m: any; close: () => void; done: (a: App, msg: string) => void }) {
   const [f, setF] = useState<string[]>([]); const [msg, setMsg] = useState('')
   const opts = ['NID photo — front', 'NID photo — back', 'Academic certificate', 'Full name', 'Address / area', 'Phone number']
   return (
-    <Modal open={m?.kind === 'correct'} onClose={close} title="Request a correction" footer={<><Button variant="ghost" onClick={close}>Cancel</Button><Button disabled={!f.length || !msg} onClick={() => { done(m.app); setF([]); setMsg('') }}>Send request</Button></>}>
+    <Modal open={m?.kind === 'correct'} onClose={close} title="Request a correction" footer={<><Button variant="ghost" onClick={close}>Cancel</Button><Button disabled={!f.length || !msg} onClick={() => { done(m.app, `${msg.trim()}${f.length ? ` (Please update: ${f.join(', ')}.)` : ''}`); setF([]); setMsg('') }}>Send request</Button></>}>
       <div className="space-y-4"><div><p className="mb-2 text-sm font-medium text-navy">Affected fields / documents</p><div className="space-y-2">{opts.map((o) => <label key={o} className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-teal-600" checked={f.includes(o)} onChange={() => setF(f.includes(o) ? f.filter((x) => x !== o) : [...f, o])} />{o}</label>)}</div></div>
         <Field label="Message to applicant" required><Textarea value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Explain what needs to change and how." /></Field></div>
     </Modal>
@@ -211,10 +236,10 @@ function Schedule({ m, close, done }: { m: any; close: () => void; done: (a: App
     </Modal>
   )
 }
-function Reject({ m, close, done }: { m: any; close: () => void; done: (a: App) => void }) {
+function Reject({ m, close, done }: { m: any; close: () => void; done: (a: App, reason: string) => void }) {
   const [r, setR] = useState('')
   return (
-    <Modal open={m?.kind === 'reject'} onClose={close} title="Reject this application?" footer={<><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="destructive" disabled={!r.trim()} onClick={() => { done(m.app); setR('') }}>Reject application</Button></>}>
+    <Modal open={m?.kind === 'reject'} onClose={close} title="Reject this application?" footer={<><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="destructive" disabled={!r.trim()} onClick={() => { done(m.app, r.trim()); setR('') }}>Reject application</Button></>}>
       <div className="space-y-3"><Alert kind="warning">The applicant will see your reason and be told how to reapply, if allowed.</Alert><Field label="Reason (required)" required><Textarea value={r} onChange={(e) => setR(e.target.value)} placeholder="Be specific and respectful." /></Field></div>
     </Modal>
   )

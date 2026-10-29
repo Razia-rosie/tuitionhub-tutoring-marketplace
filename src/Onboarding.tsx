@@ -3,12 +3,13 @@ import {
   ArrowLeft, ArrowRight, CalendarPlus, Check, CheckCircle2, Copy, Link2, Lock, MapPin, ShieldCheck, Video, Mail, Phone, Building2,
 } from 'lucide-react'
 import {
-  Alert, Button, Card, Check2, DocUpload, Field, Illustration, Input, Modal, PasswordInput, PhoneInput, PrivacyNote, Role, ROLE_LABEL,
+  Alert, Button, Card, Check2, DEV_TOOLS, DocUpload, Field, Illustration, Input, Modal, PasswordInput, PhoneInput, PrivacyNote, Role, ROLE_LABEL,
   Select, Status, StatusBadge, Stepper, Textarea, Timeline, useApp, Pill, Avatar,
 } from './ui'
 import { AuthShell } from './Public'
 import { Shell } from './Shell'
 import { navFor } from './Dash'
+import { me, signUp } from './api'
 
 const DIVISIONS = ['Dhaka', 'Chattogram', 'Rajshahi', 'Khulna', 'Sylhet', 'Barishal', 'Rangpur', 'Mymensingh']
 type F = { k: string; label: string; type?: string; options?: string[]; opt?: boolean; hint?: string; sample: string; half?: boolean; ro?: boolean }
@@ -77,7 +78,7 @@ const FLOWS: Record<Role, Step[]> = {
 const mask = (v: string) => (v ? `•••• •••• ${v.slice(-4).padStart(4, '•')}` : '—')
 
 export function Register({ kind, guardianMode }: { kind: Role; guardianMode?: boolean }) {
-  const { go, toast } = useApp()
+  const { go, toast, signIn } = useApp()
   const steps = FLOWS[kind]
   const [i, setI] = useState(0)
   const [v, setV] = useState<Record<string, string>>({})
@@ -106,11 +107,28 @@ export function Register({ kind, guardianMode }: { kind: Role; guardianMode?: bo
     setErrs(e)
     return Object.keys(e).length === 0
   }
+  const submit = async () => {
+    // Student accounts need a server-side function (service role) to create; still simulated.
+    if (guardianMode) {
+      setLoading(true)
+      return setTimeout(() => { setLoading(false); go('student-confirm') }, 1000)
+    }
+    setLoading(true)
+    try {
+      const user = await signUp({ email: v.email.trim(), password: v.pw, role: kind, displayName: (v.name || v.cname || '').trim(), phone: v.phone })
+      if (user) signIn(user)
+      else go('confirm-email')
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Unable to create your account. Please try again.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
   const next = () => {
     if (step.review) {
       if (!terms) return setErrs({ terms: 'Please accept the consent to continue.' })
-      setLoading(true)
-      return setTimeout(() => { setLoading(false); go(guardianMode ? 'student-confirm' : 'confirm') }, 1000)
+      if (!loading) void submit()
+      return
     }
     if (validate()) setI(i + 1)
     else toast('Please fix the highlighted items to continue.', 'error')
@@ -125,7 +143,7 @@ export function Register({ kind, guardianMode }: { kind: Role; guardianMode?: bo
       <Card className="space-y-5">
         <div className="flex items-start justify-between gap-3">
           <div><h2 className="text-2xl">{step.title}</h2><p className="text-sm text-mute">{step.review ? 'Check everything before you submit. You can go back to edit.' : step.docs ? 'Add a clear photo of each original document.' : 'Fields marked * are required.'}</p></div>
-          {step.fields && <button type="button" onClick={autofill} className="shrink-0 text-xs font-semibold text-teal-700 underline">Fill sample data</button>}
+          {step.fields && DEV_TOOLS && <button type="button" onClick={autofill} className="shrink-0 text-xs font-semibold text-teal-700 underline">Fill sample data</button>}
         </div>
 
         {step.fields && (
@@ -227,8 +245,19 @@ export function Register({ kind, guardianMode }: { kind: Role; guardianMode?: bo
   )
 }
 
-export function Confirm({ student }: { student?: boolean }) {
+export function Confirm({ student, emailSent }: { student?: boolean; emailSent?: boolean }) {
   const { go, role, setStatus } = useApp()
+  if (emailSent) {
+    return (
+      <AuthShell title="Confirm your email" sub="Your application was received. One more step before our admin team can review it.">
+        <div className="flex flex-col items-start gap-6">
+          <Illustration kind="success" size={150} />
+          <Alert kind="info" title="Check your inbox">We sent you a confirmation link. Open it on this device, then log in to follow your application’s progress.</Alert>
+          <Button className="w-full" onClick={() => go('login')}>Go to log in</Button>
+        </div>
+      </AuthShell>
+    )
+  }
   const ref = student ? 'TH-STU-2026-00417' : `TH-${role.slice(0, 3).toUpperCase()}-2026-0${role === 'tutor' ? '2931' : '3184'}`
   return (
     <AuthShell title="Application submitted" sub={student ? 'Nabil’s application is with our admin team.' : 'Thank you. Our admin team will review your application.'}>
@@ -252,12 +281,21 @@ export function Confirm({ student }: { student?: boolean }) {
 const ORDER: Status[] = ['pending', 'documents', 'correction', 'invited', 'scheduled', 'completed', 'approved', 'rejected']
 
 export function Pending() {
-  const { role, status, setStatus, go, toast, setPct } = useApp()
+  const { role, status, setStatus, go, toast, setPct, user, signIn } = useApp()
+  const [checking, setChecking] = useState(false)
   const [slot, setSlot] = useState('')
   const [resched, setResched] = useState(false)
   const [loading, setLoading] = useState(false)
   const isStudent = role === 'student'
-  const name = role === 'center' ? 'Agrabad Academic Care' : role === 'guardian' ? 'Shirin Akter' : role === 'student' ? 'Nabil Hasan' : 'Rahim Uddin'
+  const name = user?.display_name || (role === 'center' ? 'Agrabad Academic Care' : role === 'guardian' ? 'Shirin Akter' : role === 'student' ? 'Nabil Hasan' : 'Rahim Uddin')
+  // Real accounts read the admin's own note; the prototype shows a sample.
+  const note = user?.status_note
+  const refresh = async () => {
+    setChecking(true)
+    try { const fresh = await me(); if (fresh) signIn(fresh); toast(fresh?.account_status === status ? 'No change yet — we’ll keep you posted.' : 'Your status was updated.', 'info') }
+    catch (error) { toast(error instanceof Error ? error.message : 'Unable to refresh your status.', 'error') }
+    finally { setChecking(false) }
+  }
   const org = role === 'center'
   const inPerson = role === 'center'
   const stepIdx = { pending: 1, documents: 0, correction: 1, invited: 2, scheduled: 2, completed: 3, approved: 4, rejected: 3 } as Record<string, number>
@@ -272,7 +310,7 @@ export function Pending() {
     { title: 'Decision', state: stepIdx[status] > 3 || status === 'approved' ? 'done' as const : stepIdx[status] === 3 ? 'current' as const : 'todo' as const },
     { title: 'Profile setup', sub: 'Unlocks after approval', state: status === 'approved' ? 'current' as const : 'todo' as const },
   ]
-  const readOnly = [['Name', name], ['Email', 'user@example.com'], ['Phone', '+880 17XX-XXXXXX'], ['Location', role === 'center' ? 'Chattogram, Agrabad' : 'Dhaka, Mirpur'], ['ID number', '•••• •••• 4821']]
+  const readOnly = [['Name', name], ['Email', user?.email ?? 'user@example.com'], ['Phone', '+880 17XX-XXXXXX'], ['Location', role === 'center' ? 'Chattogram, Agrabad' : 'Dhaka, Mirpur'], ['ID number', '•••• •••• 4821']]
 
   const interviewCard = (
     <Card className="border-blue-200">
@@ -293,7 +331,7 @@ export function Pending() {
   else if (status === 'correction')
     main = (
       <Card className="space-y-4">
-        <Alert kind="warning" title="Admin notes">“The NID photo is slightly blurred at the bottom-left corner and the date of birth is hard to read. Please retake it in better light and confirm your area.” — TuitionHub Admin, 27 Oct</Alert>
+        <Alert kind="warning" title="Admin notes">“{note ?? 'The NID photo is slightly blurred at the bottom-left corner and the date of birth is hard to read. Please retake it in better light and confirm your area.'}” — TuitionHub Admin</Alert>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="NID photo — front" error="Flagged: needs a clearer photo"><div className="flex h-11 items-center rounded-[10px] border border-red-500 bg-red-50 px-3 text-sm text-red-800">Flagged by admin</div></Field>
           <Field label="Area" error="Flagged: please confirm"><Input error defaultValue="Mirpur" /></Field>
@@ -322,7 +360,7 @@ export function Pending() {
   else if (status === 'rejected')
     main = (
       <Card className="space-y-4 border-red-200">
-        <Alert kind="error" title="Your application was not approved">Reason: “The identity documents submitted did not match the details provided, and the follow-up could not confirm them.”</Alert>
+        <Alert kind="error" title="Your application was not approved">Reason: “{note ?? 'The identity documents submitted did not match the details provided, and the follow-up could not confirm them.'}”</Alert>
         <p className="text-sm text-ink">If you believe this is a mistake, contact support at <b>support@tuitionhub.example</b> or <b>+880 17XX-XXXXXX</b>. You may reapply after 30 days with new, clear documents.</p>
         <div className="flex gap-2"><Button variant="secondary" onClick={() => toast('Support request opened.', 'info')}>Contact support</Button><Button disabled>Reapply (available 26 Nov 2026)</Button></div>
       </Card>
@@ -353,13 +391,18 @@ export function Pending() {
           </div>
           <Card><h3 className="mb-4 text-lg">Verification progress</h3><Timeline items={items} /></Card>
         </div>
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-3 text-xs text-mute">
+        {user ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4 text-sm text-mute">
+            <span>Status changes are made by the TuitionHub admin team.</span>
+            <Button size="sm" variant="secondary" loading={checking} onClick={refresh}>Check for updates</Button>
+          </div>
+        ) : DEV_TOOLS && <div className="rounded-xl border border-dashed border-slate-300 bg-white p-3 text-xs text-mute">
           <b className="text-ink">Prototype controls</b> — simulate admin actions or jump to a variant:
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button size="sm" variant="secondary" onClick={sim}>Simulate next admin action</Button>
             {ORDER.map((s) => <button key={s} onClick={() => setStatus(s)} className={`rounded-full border px-2.5 py-1 font-semibold ${status === s ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-300'}`}>{s}</button>)}
           </div>
-        </div>
+        </div>}
       </div>
       <Modal open={resched} onClose={() => setResched(false)} title="Request a reschedule" footer={<><Button variant="ghost" onClick={() => setResched(false)}>Cancel</Button><Button onClick={() => { setResched(false); toast('Reschedule request sent to admin.', 'success') }}>Send request</Button></>}>
         <Field label="Reason and preferred times" required><Textarea placeholder="e.g. I have an exam on Sunday. Monday afternoon works better." /></Field>

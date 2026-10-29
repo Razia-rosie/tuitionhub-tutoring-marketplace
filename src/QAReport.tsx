@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { Button, Card, Pill, useApp } from './ui'
 
-type S = 'Fixed' | 'Added' | 'Verified' | 'Config-checked' | 'Not possible in Figma'
-const TONE: Record<S, 'green' | 'teal' | 'blue' | 'amber' | 'grey'> = { Fixed: 'green', Added: 'teal', Verified: 'blue', 'Config-checked': 'amber', 'Not possible in Figma': 'grey' }
+type S = 'Fixed' | 'Added' | 'Verified' | 'Config-checked' | 'Out of scope'
+const TONE: Record<S, 'green' | 'teal' | 'blue' | 'amber' | 'grey'> = { Fixed: 'green', Added: 'teal', Verified: 'blue', 'Config-checked': 'amber', 'Out of scope': 'grey' }
 
 const ROWS: [string, string, string, S][] = [
-  ['Environment', 'Brief assumed a Figma file with frames and prototype links; this project is a coded React prototype.', 'Audit and fixes applied to the code. “Prototype connections” = in-app routes and the Prototype navigator.', 'Config-checked'],
+  ['Environment', 'Coded React prototype; screens are reached through in-app routes.', 'Audit and fixes applied to the code. The Prototype navigator jumps to any screen or state.', 'Config-checked'],
   ['Settings', '“Change password” button looked active but did nothing.', 'Opens a modal with current/new password fields, cancel and confirm, and a toast.', 'Fixed'],
   ['Landing footer', 'Company links (About, Terms, Help…) were dead.', 'Each now responds with a clear “not part of this prototype” notice instead of silently doing nothing.', 'Fixed'],
   ['Admin filters', 'Role filter showed a generic “Select…” option.', 'Select now supports a custom placeholder; role filter reads “All roles”.', 'Fixed'],
@@ -34,7 +34,10 @@ const ROWS: [string, string, string, S][] = [
   ['Back / modals', 'Back from subject room returns to its batch.', 'Run in headless Chromium.', 'Verified'],
   ['Scenario 11', 'Admin requests correction → applicant status.', 'Run in headless Chromium: admin action, then “Preview what the applicant sees” shows Correction Requested with locked navigation. The applicant sees a stock admin note, not the admin’s typed text.', 'Verified'],
   ['Scenarios 1–4, 12, 15', 'Phase 1 registration, interview-details, approval and login journeys.', 'Wiring read in code (interview dialog opened in a browser, but the sent invitation was not traced to the applicant screen); not run end-to-end.', 'Config-checked'],
-  ['Authentication / storage', 'Real login, database, email, document verification, backend permissions.', 'Shown only as realistic UI states; none are implemented.', 'Not possible in Figma'],
+  ['Authentication', 'Real login, sign-up, logout, password reset and session restore.', 'Supabase Auth; each user gets a profile row (role, account status) via a database trigger. Postgres row-level security enforces access.', 'Added'],
+  ['Admin review', 'Admin decisions did not persist and the applicant saw a stock note.', 'With an admin session, Admin lists real applicants (admin_list_applicants) and approve / correction / interview / reject call admin_set_account_status; the applicant sees the admin’s actual note and can “Check for updates”.', 'Added'],
+  ['Profile activation', 'Users could mark themselves active.', 'Activation goes through complete_profile(), which only works after admin approval; profile_pct = 100 is constrained to active accounts.', 'Fixed'],
+  ['Storage / workflows', 'Document uploads, marketplace and room data.', 'Schema, RLS and an application status-transition trigger exist in supabase/migrations; these screens still use the in-memory demo store.', 'Config-checked'],
 ]
 
 export function QAReport() {
@@ -46,7 +49,7 @@ export function QAReport() {
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
       <button onClick={() => go('landing')} className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal-700"><ArrowLeft size={16} />Back to prototype</button>
       <div><h1 className="text-2xl sm:text-3xl">QA Report</h1><p className="text-sm text-mute">Audit and repair log for the TuitionHub coded prototype.</p></div>
-      <div className="flex flex-wrap gap-2">{(['All', 'Fixed', 'Added', 'Verified', 'Config-checked', 'Not possible in Figma'] as const).map((s) => (
+      <div className="flex flex-wrap gap-2">{(['All', 'Fixed', 'Added', 'Verified', 'Config-checked', 'Out of scope'] as const).map((s) => (
         <button key={s} onClick={() => setF(s)} className={`rounded-full border px-3 py-1 text-xs font-bold ${f === s ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-line text-mute'}`}>{s}{s !== 'All' && ` · ${counts(s)}`}</button>))}</div>
       <Card pad={false} className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-wider text-mute"><tr><th className="p-3">Area</th><th className="p-3">Issue</th><th className="p-3">Fix applied</th><th className="p-3">Status</th></tr></thead>

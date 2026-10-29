@@ -1,21 +1,21 @@
 import { useState } from 'react'
 import {
-  ArrowRight, BookOpen, Building2, Camera, CheckCircle2, ClipboardCheck, Globe, GraduationCap, Handshake, AtSign,
-  Mail, MapPin, Menu, Phone, ShieldCheck, UserCheck, UserPlus, Users, Video, X, Rss, Lock, Search, Star, Home,
+  ArrowRight, BookOpen, Building2, Camera, CheckCircle2, ClipboardCheck, GraduationCap, Handshake,
+  Menu, ShieldCheck, UserPlus, Users, Video, X, Lock, Search, Star, Home,
 } from 'lucide-react'
 import {
   Alert, Button, Card, Field, Illustration, Input, Logo, Modal, PasswordInput, Role, ROLE_LABEL, Tabs, useApp,
 } from './ui'
-import { ApiError, login, logout as apiLogout } from './api'
+import { ApiError, login, logout as apiLogout, requestPasswordReset, updatePassword } from './api'
 
 export const ROLE_ICON = { tutor: GraduationCap, center: Building2, guardian: Users, student: BookOpen }
 const LOGIN_ERROR_TITLE: Record<string, string> = {
-  account_locked: 'Account locked',
-  account_not_available: 'Account not active yet',
+  email_not_confirmed: 'Email not confirmed',
+  over_request_rate_limit: 'Too many attempts',
   wrong_portal: 'Wrong sign-in page',
   network_error: 'Can’t reach TuitionHub',
-  configuration_unavailable: 'Service unavailable',
-  database_unavailable: 'Service unavailable',
+  profile_unavailable: 'Service unavailable',
+  profile_missing: 'Account problem',
 }
 const ROLE_DESC: Record<Role, { line: string; verify: string }> = {
   tutor: { line: 'Teach students near you and build a verified reputation.', verify: 'Requires NID photos, a supporting document and an admin review.' },
@@ -26,7 +26,7 @@ const ROLE_DESC: Record<Role, { line: string; verify: string }> = {
 
 /* ---------------- LANDING ---------------- */
 export function Landing() {
-  const { go, setRole, toast } = useApp()
+  const { go, setRole } = useApp()
   const [drawer, setDrawer] = useState(false)
   const [tab, setTab] = useState('Tutors')
   const nav = ['How It Works', 'For Tutors', 'For Coaching Centers', 'For Guardians', 'For Students', 'Trust & Safety']
@@ -77,18 +77,9 @@ export function Landing() {
               <Button size="lg" variant="amber" onClick={() => go('signup')}>Get Started <ArrowRight size={18} /></Button>
               <Button size="lg" variant="secondary" onClick={() => scroll('how')}>How It Works</Button>
             </div>
-            <div className="mt-9 grid max-w-lg grid-cols-3 gap-4 border-t border-line pt-6">
-              {[['100%', 'Manual admin review'], ['64', 'Districts covered'], ['4', 'Verified user types']].map(([a, b]) => (
-                <div key={b}><div className="text-2xl font-extrabold text-navy">{a}</div><div className="text-xs text-mute">{b}</div></div>
-              ))}
-            </div>
           </div>
           <div className="relative mx-auto w-full max-w-md">
             <Illustration kind="hero" size={440} />
-            <div className="absolute bottom-4 left-0 flex items-center gap-3 rounded-xl border border-line bg-white p-3 shadow-soft sm:-left-4">
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-green-100 text-green-700"><UserCheck size={20} /></span>
-              <div><p className="text-sm font-bold text-navy">Rahim Uddin</p><p className="text-xs text-mute">Verified tutor · Dhaka, Mirpur</p></div>
-            </div>
           </div>
         </div>
       </section>
@@ -101,7 +92,7 @@ export function Landing() {
           {(Object.keys(ROLE_LABEL) as Role[]).map((r) => {
             const I = ROLE_ICON[r]
             return (
-              <Card key={r} className="flex w-72 shrink-0 snap-start flex-col transition hover:-translate-y-1 md:w-auto">
+              <Card key={r} className="flex w-72 shrink-0 snap-start flex-col md:w-auto">
                 <span className="grid h-12 w-12 place-items-center rounded-xl bg-teal-50 text-teal-700"><I size={24} /></span>
                 <h3 className="mt-4 text-xl">{ROLE_LABEL[r]}</h3>
                 <p className="mt-1.5 flex-1 text-sm text-mute">{ROLE_DESC[r].line}</p>
@@ -146,7 +137,7 @@ export function Landing() {
       <section id="trust" className="bg-navy py-16 text-white">
         <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-2">
           <div>
-            <h2 className="text-3xl !text-white">Trust is the whole product</h2>
+            <h2 className="text-3xl !text-white">How we verify every account</h2>
             <p className="mt-3 text-slate-300">Nobody gets operational access until an administrator has verified them and their profile is 100% complete.</p>
             <ul className="mt-8 space-y-4">
               {[[ShieldCheck, 'Manual admin review of every application'], [Camera, 'Camera-photo ID verification (JPG, JPEG, PNG)'], [Video, 'Interview step, online or in-person, when requested'], [Lock, 'Private document handling, never shown publicly'], [Users, 'Parent-linked student accounts']].map(([I, t]) => {
@@ -161,20 +152,23 @@ export function Landing() {
 
       <section className="px-4 py-16 sm:px-6">
         <div className="mx-auto max-w-5xl rounded-3xl bg-teal-700 px-6 py-12 text-center text-white sm:px-12">
-          <h2 className="text-3xl !text-white">Ready to learn or teach with confidence?</h2>
-          <p className="mx-auto mt-3 max-w-lg text-teal-100">Create your account today. Verification takes a few minutes of your time.</p>
+          <h2 className="text-3xl !text-white">Create your account</h2>
+          <p className="mx-auto mt-3 max-w-lg text-teal-100">Registration takes a few minutes. Our admin team usually reviews applications within 2–3 working days.</p>
           <Button size="lg" variant="amber" className="mt-6" onClick={() => go('signup')}>Create your account</Button>
         </div>
       </section>
 
       <footer className="border-t border-line bg-canvas">
-        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_1fr_1.2fr]">
-          <div><Logo /><p className="mt-3 max-w-xs text-sm text-mute">A verified tutoring marketplace connecting families, students, tutors and coaching centers across Bangladesh.</p>
-            <div className="mt-4 flex gap-2">{[Globe, AtSign, Rss].map((I, i) => <span key={i} className="grid h-9 w-9 place-items-center rounded-full bg-white text-ink shadow-sm"><I size={16} /></span>)}</div></div>
-          <div><h4 className="text-sm">Company</h4><ul className="mt-3 space-y-2 text-sm text-mute">{['About', 'How It Works', 'Privacy Policy', 'Terms', 'Help'].map((l) => <li key={l}><a href="#" onClick={(e) => { e.preventDefault(); toast(`“${l}” isn’t part of this prototype.`, 'info') }} className="hover:text-teal-700">{l}</a></li>)}</ul></div>
-          <div><h4 className="text-sm">Contact</h4><ul className="mt-3 space-y-2 text-sm text-mute"><li className="flex gap-2"><Mail size={16} />support@tuitionhub.example</li><li className="flex gap-2"><Phone size={16} />+880 17XX-XXXXXX</li><li className="flex gap-2"><MapPin size={16} />House 12, Road 5, Mirpur DOHS, Dhaka</li></ul></div>
+        <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-12 sm:px-6 md:flex-row md:justify-between">
+          <div><Logo /><p className="mt-3 max-w-xs text-sm text-mute">A verified tutoring marketplace connecting families, students, tutors and coaching centers across Bangladesh.</p></div>
+          <nav aria-label="Footer"><h4 className="text-sm">Explore</h4><ul className="mt-3 space-y-2 text-sm text-mute">
+            <li><button onClick={() => scroll('how')} className="hover:text-teal-700">How it works</button></li>
+            <li><button onClick={() => scroll('trust')} className="hover:text-teal-700">Trust &amp; safety</button></li>
+            <li><button onClick={() => go('signup')} className="hover:text-teal-700">Create an account</button></li>
+            <li><button onClick={() => go('login')} className="hover:text-teal-700">Log in</button></li>
+          </ul></nav>
         </div>
-        <p className="border-t border-line py-4 text-center text-xs text-mute">© 2026 TuitionHub. Fictional demo content.</p>
+        <p className="border-t border-line py-4 text-center text-xs text-mute">© 2026 TuitionHub</p>
       </footer>
     </div>
   )
@@ -213,7 +207,7 @@ export function Login({ admin }: { admin?: boolean }) {
     setErr(null)
 
     if (!email.trim() || !pw) {
-      setErr({ code: 'invalid_input', text: 'Enter your email or username and password.' })
+      setErr({ code: 'invalid_input', text: 'Enter your email and password.' })
       return
     }
 
@@ -245,7 +239,7 @@ export function Login({ admin }: { admin?: boolean }) {
       {admin && <div className="mb-5 flex items-center gap-3 rounded-xl bg-navy p-4 text-sm text-white"><Lock size={18} className="text-amber-cta" />This area is monitored. Access is logged. No public sign-up exists.</div>}
       <form onSubmit={submit} className="space-y-4" noValidate>
         {err && <Alert kind="error" title={LOGIN_ERROR_TITLE[err.code] ?? 'Couldn’t log you in'}>{err.text}</Alert>}
-        <Field label="Email or username" required><Input type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={admin ? 'admin@tuitionhub.example' : 'you@example.com'} autoComplete="username" autoCapitalize="none" spellCheck={false} error={err?.code === 'invalid_input' && !email.trim()} /></Field>
+        <Field label="Email" required><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={admin ? 'admin@tuitionhub.example' : 'you@example.com'} autoComplete="email" autoCapitalize="none" spellCheck={false} error={err?.code === 'invalid_input' && !email.trim()} /></Field>
         <Field label="Password" required><PasswordInput value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Your password" autoComplete="current-password" /></Field>
         {!admin && <div className="text-right text-sm"><button type="button" className="font-semibold text-teal-700 hover:underline" onClick={() => go('forgot')}>Forgot password?</button></div>}
         <Button type="submit" className="w-full" loading={loading}>{admin ? 'Sign in securely' : 'Log in'}</Button>
@@ -263,15 +257,62 @@ export function Login({ admin }: { admin?: boolean }) {
 
 export function Forgot() {
   const { go } = useApp(); const [sent, setSent] = useState(false)
+  const [email, setEmail] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState('')
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setErr('Enter a valid email address, like name@example.com.')
+    setErr(''); setLoading(true)
+    try {
+      await requestPasswordReset(email.trim())
+      setSent(true)
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Unable to send the reset link. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
   return (
     <AuthShell title={sent ? 'Check your inbox' : 'Reset your password'} sub={sent ? 'If an account exists for that email, a reset link is on its way.' : 'Enter your email and we’ll send reset instructions.'}>
       {sent ? <Button className="w-full" onClick={() => go('login')}>Back to log in</Button> : (
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setSent(true) }}>
-          <Field label="Email" required><Input type="email" required placeholder="you@example.com" /></Field>
-          <Button type="submit" className="w-full">Send reset link</Button>
+        <form className="space-y-4" onSubmit={submit} noValidate>
+          <Field label="Email" required error={err}><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} error={!!err} autoComplete="email" placeholder="you@example.com" /></Field>
+          <Button type="submit" className="w-full" loading={loading}>Send reset link</Button>
           <button type="button" className="w-full text-sm text-mute hover:underline" onClick={() => go('login')}>Back to log in</button>
         </form>
       )}
+    </AuthShell>
+  )
+}
+
+/** Reached from the emailed recovery link; Supabase has already created a short-lived recovery session. */
+export function ResetPassword() {
+  const { logout, toast } = useApp()
+  const [pw, setPw] = useState(''); const [pw2, setPw2] = useState('')
+  const [loading, setLoading] = useState(false); const [err, setErr] = useState('')
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (pw.length < 8) return setErr('Use at least 8 characters.')
+    if (pw !== pw2) return setErr('Passwords do not match.')
+    setErr(''); setLoading(true)
+    try {
+      await updatePassword(pw)
+      // End the short-lived recovery session so the user signs in fresh with the new password.
+      await logout()
+      toast('Password updated. Please log in with your new password.')
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Unable to update your password. Request a new link and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  return (
+    <AuthShell title="Choose a new password" sub="Use 8+ characters with a letter, a number and a symbol.">
+      <form className="space-y-4" onSubmit={submit} noValidate>
+        {err && <Alert kind="error" title="Couldn’t update password">{err}</Alert>}
+        <Field label="New password" required><PasswordInput strength value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" /></Field>
+        <Field label="Confirm new password" required><PasswordInput value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" /></Field>
+        <Button type="submit" className="w-full" loading={loading}>Update password</Button>
+      </form>
     </AuthShell>
   )
 }

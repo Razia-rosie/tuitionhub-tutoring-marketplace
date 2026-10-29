@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Bell, ChevronDown, LogOut, Lock, MoreHorizontal, X } from 'lucide-react'
-import { Avatar, Button, Logo, Modal, useApp } from './ui'
+import { Avatar, Button, DEV_TOOLS, Logo, Modal, useApp } from './ui'
 
 export type NavItem = { id: string; label: string; icon: React.ElementType; locked?: boolean }
 
@@ -40,11 +40,11 @@ export function Shell({ nav, active, onNav, name, roleLabel, children, tone = 't
           <div className="lg:hidden"><Logo size={24} /></div>
           <div className="hidden text-sm text-mute lg:block">{roleLabel}</div>
           <div className="relative flex items-center gap-2">
-            <button aria-label="Notifications" onClick={() => setNotif(!notif)} className="relative rounded-full p-2 hover:bg-black/5"><Bell size={20} /><span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-cta" /></button>
+            <button aria-label="Notifications" aria-expanded={notif} onClick={() => setNotif(!notif)} className="relative rounded-full p-2 hover:bg-black/5"><Bell size={20} /></button>
             {notif && (
               <div className="absolute right-0 top-12 z-40 w-72 rounded-xl border border-line bg-white p-3 shadow-soft">
                 <p className="px-2 pb-2 text-sm font-bold text-navy">Notifications</p>
-                {['Your application status was updated.', 'Reminder: complete your profile to unlock features.'].map((t) => <p key={t} className="rounded-lg px-2 py-2 text-sm text-mute hover:bg-slate-50">{t}</p>)}
+                <p className="px-2 py-2 text-sm text-mute">You’re all caught up. Updates about your account will appear here.</p>
               </div>
             )}
             <button onClick={() => setMenu(!menu)} className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 hover:bg-black/5" aria-haspopup="menu" aria-expanded={menu}>
@@ -53,7 +53,7 @@ export function Shell({ nav, active, onNav, name, roleLabel, children, tone = 't
             {menu && (
               <div role="menu" className="absolute right-0 top-12 z-40 w-56 rounded-xl border border-line bg-white p-1.5 shadow-soft">
                 <div className="px-3 py-2"><p className="text-sm font-bold text-navy">{name}</p><p className="text-xs text-mute">{roleLabel}</p></div>
-                <button role="menuitem" onClick={() => { setMenu(false); go('timeout') }} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">Preview session timeout</button>
+                {DEV_TOOLS && <button role="menuitem" onClick={() => { setMenu(false); go('timeout') }} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">Preview session timeout</button>}
                 <button role="menuitem" onClick={() => { setMenu(false); setConfirm(true) }} className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50">Logout</button>
               </div>
             )}

@@ -12,6 +12,9 @@ export type Status =
   | 'draft' | 'documents' | 'pending' | 'correction' | 'invited' | 'scheduled'
   | 'completed' | 'approved' | 'rejected' | 'incomplete' | 'active'
 
+/** Prototype-only tools (screen navigator, sample-data fill, simulated admin actions) render only in `vite dev`. */
+export const DEV_TOOLS = import.meta.env.DEV
+
 export const ROLE_LABEL: Record<Role, string> = {
   tutor: 'Private Tutor', center: 'Coaching Center', guardian: 'Guardian / Parent', student: 'Student',
 }
@@ -22,6 +25,10 @@ export type Ctx = {
   go: (r: string) => void
   logout: () => Promise<void>
   signIn: (user: AuthUser) => void
+  /** The real Supabase user, or null while browsing the prototype without a session. */
+  user: AuthUser | null
+  /** Replace the cached profile after a save, without changing the route. */
+  updateUser: (user: AuthUser) => void
   role: Role
   setRole: (r: Role) => void
   status: Status

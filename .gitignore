@@ -12,14 +12,7 @@ logs/
 *.log
 .claude-replay.*
 .tmp-*
-/.figma/design-context/
 
-# Platform-managed agentplat state, not project source. In the
-# client-initiated single-repo workspace layout (make's `Path: "."` spec) the
-# repo root IS the workspace root, so these land inside this repo rather than
-# beside it.
-/.plugins/
-/.opencode-skills/
 
 # OS / editor
 .DS_Store
@@ -37,3 +30,10 @@ config.local.php
 
 # Claude Code local state
 .claude/settings.local.json
+
+# Vercel
+.vercel/
+
+
+# Local seed with real test-account passwords (never commit)
+supabase/seed.local.sql

@@ -9,6 +9,7 @@ import {
 } from './ui'
 import { NavItem, Shell } from './Shell'
 import { KIDS, roomsFor, useStore } from './store'
+import { updateDisplayName } from './api'
 
 export function navFor(role: Role, locked = false): NavItem[] {
   const L = locked
@@ -22,6 +23,9 @@ export function navFor(role: Role, locked = false): NavItem[] {
   return m[role]
 }
 const NAMES: Record<Role, string> = { tutor: 'Rahim Uddin', center: 'Agrabad Academic Care', guardian: 'Shirin Akter', student: 'Nabil Hasan' }
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' }
+/** Signed-in user's own name; demo name while browsing the prototype without a session. */
+const useName = (role: Role) => { const { user } = useApp(); return user?.display_name || NAMES[role] }
 
 type Listing = { id: number; title: string; area: string; cls: string; subj: string; fee: number; mode: 'In-person' | 'Online'; days: string; match?: number; poster: string }
 const LISTINGS: Listing[] = [
@@ -110,10 +114,18 @@ function Suggested({ role }: { role: Role }) {
 function Settings_({ role }: { role: Role }) {
   const [a, setA] = useState(true); const [b, setB] = useState(false)
   const [pw, setPw] = useState(false)
-  const { toast } = useApp()
+  const { toast, user, updateUser } = useApp()
+  const [name, setName] = useState(useName(role)); const [saving, setSaving] = useState(false)
+  const saveName = async () => {
+    if (!user) return toast('Display name saved (prototype only — not signed in).', 'info')
+    setSaving(true)
+    try { updateUser(await updateDisplayName(name)); toast('Display name saved.') }
+    catch (error) { toast(error instanceof Error ? error.message : 'Unable to save your name.', 'error') }
+    finally { setSaving(false) }
+  }
   return (
     <div className="max-w-2xl space-y-5"><h1 className="text-2xl sm:text-3xl">Account settings</h1>
-      <Card className="space-y-4"><Field label="Display name"><Input defaultValue={NAMES[role]} /></Field><Field label="Email"><Input defaultValue="user@example.com" disabled /></Field><PrivacyNote compact /></Card>
+      <Card className="space-y-4"><Field label="Display name"><div className="flex gap-2"><Input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} /><Button variant="secondary" loading={saving} disabled={!name.trim()} onClick={saveName}>Save</Button></div></Field><Field label="Email"><Input value={user?.email ?? 'user@example.com'} disabled readOnly /></Field><PrivacyNote compact /></Card>
       <Card className="space-y-4">{[['Email me about application updates', a, setA], ['SMS reminders for interviews and classes', b, setB]].map(([t, on, f]) => <div key={t as string} className="flex items-center justify-between gap-4 text-sm"><span>{t as string}</span><Toggle on={on as boolean} onChange={f as (b: boolean) => void} label={t as string} /></div>)}</Card>
       <Card><h3 className="text-base">Security</h3><p className="mt-1 text-sm text-mute">ID numbers appear masked: •••• •••• 4821</p><Button variant="secondary" className="mt-3" onClick={() => setPw(true)}>Change password</Button></Card><Modal open={pw} onClose={() => setPw(false)} title="Change password" footer={<><Button variant="ghost" onClick={() => setPw(false)}>Cancel</Button><Button onClick={() => { setPw(false); toast('Password updated. Other devices will ask you to sign in again.') }}>Update password</Button></>}>
         <div className="space-y-3"><Field label="Current password"><PasswordInput /></Field><Field label="New password"><PasswordInput strength /></Field></div></Modal>
@@ -167,6 +179,7 @@ function Guardian({ view, go }: { view: string; go: (v: string) => void }) {
 
 export function Dashboard({ initial = 'home' }: { initial?: string }) {
   const { role, go } = useApp()
+  const name = useName(role)
   const [view, setView] = useState(initial)
   const L = role === 'center' ? 'Institution' : 'Profile'
   let content: React.ReactNode
@@ -175,10 +188,10 @@ export function Dashboard({ initial = 'home' }: { initial?: string }) {
   else if (view === 'apps') content = <AppsView role={role} />
   else if (view === 'schedule') content = <Schedule />
   else if (view === 'settings') content = <Settings_ role={role} />
-  else if (view === 'profile') content = <Card className="space-y-3"><h1 className="text-2xl">{role === 'center' ? 'Center profile' : 'My profile'}</h1><div className="flex items-center gap-4"><Avatar name={NAMES[role]} size={64} /><div><p className="text-lg font-bold text-navy">{NAMES[role]}</p><Pill tone="green"><ShieldCheck size={12} />Verified by TuitionHub</Pill></div></div><Button variant="secondary" onClick={() => go('profile-wizard')}>Edit profile</Button></Card>
+  else if (view === 'profile') content = <Card className="space-y-3"><h1 className="text-2xl">{role === 'center' ? 'Center profile' : 'My profile'}</h1><div className="flex items-center gap-4"><Avatar name={name} size={64} /><div><p className="text-lg font-bold text-navy">{name}</p><Pill tone="green"><ShieldCheck size={12} />Verified by TuitionHub</Pill></div></div><Button variant="secondary" onClick={() => go('profile-wizard')}>Edit profile</Button></Card>
   else content = (
     <div className="space-y-6">
-      <div><h1 className="text-2xl sm:text-3xl">Good evening, {NAMES[role].split(' ')[0]}</h1><p className="text-sm text-mute">{role === 'student' ? 'Here’s your learning at a glance.' : 'Here’s what’s happening on your account.'}</p></div>
+      <div><h1 className="text-2xl sm:text-3xl">{greeting()}, {name.split(' ')[0]}</h1><p className="text-sm text-mute">{role === 'student' ? 'Here’s your learning at a glance.' : 'Here’s what’s happening on your account.'}</p></div>
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="flex items-center gap-4"><Ring pct={100} size={84} /><div><p className="text-sm font-bold text-navy">{L} status</p><StatusBadge status="active" /></div></Card>
         <Stat icon={ClipboardList} label="Active applications" value={5} tone="blue" />
@@ -191,14 +204,15 @@ export function Dashboard({ initial = 'home' }: { initial?: string }) {
   )
   const LEARN = ['rooms', 'messages', 'batches', 'results', 'search', ...(role === 'guardian' ? [] : ['students'])]
   const onNav = (id: string) => (LEARN.includes(id) && !(role === 'guardian' && id === 'search') ? go('learn:' + (id === 'search' ? 'feed' : id === 'messages' ? 'chat' : id === 'students' ? 'connections' : id)) : setView(id))
-  return <Shell nav={navFor(role)} active={view} onNav={onNav} name={NAMES[role]} roleLabel={ROLE_LABEL[role]}>{content}</Shell>
+  return <Shell nav={navFor(role)} active={view} onNav={onNav} name={name} roleLabel={ROLE_LABEL[role]}>{content}</Shell>
 }
 
 export function DashboardIncomplete() {
   const { role, pct, go } = useApp()
+  const name = useName(role)
   const p = pct >= 100 ? 60 : pct
   return (
-    <Shell nav={navFor(role).map((n) => ({ ...n, locked: n.id !== 'home' && n.id !== 'settings' }))} active="home" onNav={() => {}} name={NAMES[role]} roleLabel={`${ROLE_LABEL[role]} · profile incomplete`}>
+    <Shell nav={navFor(role).map((n) => ({ ...n, locked: n.id !== 'home' && n.id !== 'settings' }))} active="home" onNav={() => {}} name={name} roleLabel={`${ROLE_LABEL[role]} · profile incomplete`}>
       <div className="space-y-6">
         <Card className="flex flex-col items-center gap-6 border-amber-300 sm:flex-row"><Ring pct={p} size={130} />
           <div className="text-center sm:text-left"><StatusBadge status="incomplete" big /><h1 className="mt-3 text-2xl">You’re approved. Finish your profile to unlock everything.</h1><p className="mt-1 text-sm text-mute">Identity is verified. Only required fields block activation.</p><Button size="lg" className="mt-4" onClick={() => go('profile-wizard')}>Continue profile setup<ArrowRight size={18} /></Button></div></Card>
@@ -226,7 +240,6 @@ export function AccessDenied({ restricted }: { restricted?: boolean }) {
     <div className="grid min-h-screen place-items-center bg-canvas p-6"><div className="max-w-md text-center"><Illustration kind="lock" size={170} />
       <h1 className="mt-2 text-3xl">{restricted ? 'Access restricted' : 'You don’t have access to this page'}</h1>
       <p className="mt-2 text-mute">{restricted ? 'This feature is locked until your account is approved and your profile is 100% complete.' : 'This page belongs to another account. Guardians can only open their own linked students; students can only see their linked guardian.'}</p>
-      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center"><Button onClick={() => go('dashboard')}>Back to my dashboard</Button><Button variant="secondary" onClick={() => go('landing')}>Home</Button></div>
-      <p className="mt-6 text-xs text-slate-400">Design note: real authorization is enforced by the backend. This screen represents the intended permission rules.</p></div></div>
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center"><Button onClick={() => go('dashboard')}>Back to my dashboard</Button><Button variant="secondary" onClick={() => go('landing')}>Home</Button></div></div></div>
   )
 }

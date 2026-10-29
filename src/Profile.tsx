@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Lock, ShieldCheck } from 'lucide-react'
-import { Avatar, Button, Card, Chips, Field, Illustration, Input, Pill, Ring, Role, ROLE_LABEL, Select, Stepper, Textarea, useApp } from './ui'
+import { Avatar, Button, Card, Chips, DEV_TOOLS, Field, Illustration, Input, Pill, Ring, Role, ROLE_LABEL, Select, Stepper, Textarea, useApp } from './ui'
+import { completeProfile, me } from './api'
 
 type PF = { k: string; label: string; type: 'text' | 'textarea' | 'chips' | 'select' | 'photo' | 'verified' | 'readonly'; opts?: string[]; req?: boolean; hint?: string; sample?: string | string[]; half?: boolean }
 type PS = { title: string; desc?: string; fields: PF[]; preview?: boolean }
@@ -80,11 +81,25 @@ export function ProfileWizard({ forceRole }: { forceRole?: Role }) {
   const fillAll = () => {
     const nv = { ...v }; steps.forEach((s) => s.fields.forEach((f) => { if (f.sample !== undefined && f.req) nv[f.k] = f.sample })); nv.photo = 'yes'; setV(nv)
   }
-  const finish = () => {
+  const [activating, setActivating] = useState(false)
+  const finish = async () => {
     if (!required.every(filled)) { return app.toast('Some required fields are still empty. Check steps marked with a dot.', 'error') }
+    if (app.user) {
+      // Activation is decided server-side (the account must already be approved).
+      setActivating(true)
+      try {
+        await completeProfile()
+        const fresh = await me()
+        if (fresh) app.updateUser(fresh)
+      } catch (error) {
+        return app.toast(error instanceof Error ? error.message : 'Unable to activate your account. Please try again.', 'error')
+      } finally {
+        setActivating(false)
+      }
+    }
     app.setPct(100); app.setStatus('active'); app.go('active')
   }
-  const name = kind === 'center' ? 'Agrabad Academic Care' : kind === 'guardian' ? 'Shirin Akter' : kind === 'student' ? 'Nabil Hasan' : 'Rahim Uddin'
+  const name = app.user?.display_name || (kind === 'center' ? 'Agrabad Academic Care' : kind === 'guardian' ? 'Shirin Akter' : kind === 'student' ? 'Nabil Hasan' : 'Rahim Uddin')
 
   const render = (f: PF) => {
     const val = v[f.k]
@@ -116,7 +131,7 @@ export function ProfileWizard({ forceRole }: { forceRole?: Role }) {
           <div className="lg:hidden"><Stepper steps={steps.map((s) => s.title)} current={i} /></div>
           <Card className="space-y-5">
             <div className="flex items-start justify-between gap-3"><div><h2 className="text-2xl">{step.title}</h2><p className="text-sm text-mute">{step.preview ? 'This is how your profile will look once active.' : 'Fields marked * are required. Optional fields never block activation.'}</p></div>
-              <button onClick={fillAll} className="shrink-0 text-xs font-semibold text-teal-700 underline">Fill required (demo)</button></div>
+              {DEV_TOOLS && <button onClick={fillAll} className="shrink-0 text-xs font-semibold text-teal-700 underline">Fill required (demo)</button>}</div>
             {step.preview ? (
               <div className="space-y-4">
                 <div className="flex items-center gap-4 rounded-2xl bg-teal-50 p-5"><Avatar name={name} size={64} /><div><p className="text-xl font-bold text-navy">{name}</p><div className="mt-1 flex gap-2"><Pill tone="green"><ShieldCheck size={12} />Verified by TuitionHub</Pill><Pill tone="teal">{ROLE_LABEL[kind]}</Pill></div></div></div>
@@ -139,7 +154,7 @@ export function ProfileWizard({ forceRole }: { forceRole?: Role }) {
             )}
             <div className="flex flex-col-reverse gap-3 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
               <Button variant="ghost" disabled={i === 0} onClick={() => setI(i - 1)}><ArrowLeft size={16} />Back</Button>
-              {step.preview ? <Button size="lg" variant="amber" onClick={finish}>Confirm and activate account</Button> : <Button onClick={next}>Save and continue<ArrowRight size={16} /></Button>}
+              {step.preview ? <Button size="lg" variant="amber" loading={activating} onClick={finish}>Confirm and activate account</Button> : <Button onClick={next}>Save and continue<ArrowRight size={16} /></Button>}
             </div>
           </Card>
         </div>

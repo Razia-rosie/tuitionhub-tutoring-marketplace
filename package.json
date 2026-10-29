@@ -1,16 +1,16 @@
 {
-  "name": "figma-make-app",
+  "name": "tuitionhub",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:chrome": "vite --host 0.0.0.0 --port 8443 & VITE_PID=$!; trap 'kill $VITE_PID' EXIT; sleep 2; if [ -d \"/Applications/Google Chrome.app\" ]; then open -a \"Google Chrome\" http://localhost:8443/; else echo \"Google Chrome is not installed; open http://localhost:8443/ manually.\"; fi; wait $VITE_PID",
     "build": "vite build",
     "preview": "vite preview",
     "format": "oxfmt"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "dotenv": "^18.0.9",
@@ -33,5 +33,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "vite": "^8.0.5"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

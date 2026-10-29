@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowLeft, CheckCircle2, ChevronRight, FileText, Lock, Megaphone, Plus, Star, Upload, Users, Layers, Award, ClipboardList, Calendar, Eye } from 'lucide-react'
-import { Alert, Avatar, Bar, Button, Card, Empty, Field, Illustration, Input, Modal, Pill, Role, Select, Stat, Tabs, Textarea, useApp } from './ui'
+import { Alert, Avatar, Bar, Button, Card, DEV_TOOLS, Empty, Field, Illustration, Input, Modal, Pill, Role, Select, Stat, Tabs, Textarea, useApp } from './ui'
 import {
   Assn, KIDS, Kid, Room, TaskStatus, patchRoom, patchSub, roomsFor, sessionStatus, uid, update, useStore,
 } from './store'
@@ -44,7 +44,7 @@ export function RoomsList({ role, nav }: { role: Role; nav: Nav }) {
       {batches.length > 0 && <div><h2 className="mb-3 text-lg">Coaching batches</h2><div className="grid gap-4 md:grid-cols-2">{batches.map((b) => (
         <Card key={b.id} className="space-y-3"><div className="flex items-center justify-between"><h3>{b.name}</h3><Pill tone="teal">Enrolled</Pill></div><p className="text-sm text-mute">{b.schedule}</p><Button size="sm" onClick={() => nav('batch', { bid: b.id })}>Open batch</Button></Card>))}</div></div>}
       {hist.length > 0 && <div><h2 className="mb-3 text-lg">Past tuitions (read-only)</h2><div className="grid gap-4 md:grid-cols-2">{hist.map((r) => <Item key={r.id} r={r} />)}</div></div>}
-      {role === 'student' && <Card className="flex flex-wrap items-center gap-3 border-dashed"><Lock size={18} className="text-mute" /><p className="flex-1 text-sm text-mute">Prototype check: open a room that belongs to another student.</p><Button size="sm" variant="ghost" onClick={() => nav('denied')}>Try Tasnim’s room</Button></Card>}
+      {DEV_TOOLS && role === 'student' && <Card className="flex flex-wrap items-center gap-3 border-dashed"><Lock size={18} className="text-mute" /><p className="flex-1 text-sm text-mute">Prototype check: open a room that belongs to another student.</p><Button size="sm" variant="ghost" onClick={() => nav('denied')}>Try Tasnim’s room</Button></Card>}
     </div>
   )
 }
