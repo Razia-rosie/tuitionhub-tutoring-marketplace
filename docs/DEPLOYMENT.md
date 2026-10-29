@@ -1,5 +1,7 @@
 # Deploying to Vercel
 
+**Production:** <https://tuitionhub-tutoring-marketplace.vercel.app>. The Vercel project is `tuitionhub-tutoring-marketplace` in the `rosie-e9ad` team, linked to `main`.
+
 TuitionHub is a static single-page app: Vercel builds it with Vite and serves `dist/`. All data and auth go straight from the browser to Supabase, so there are no Vercel functions to configure.
 
 ## What `vercel.json` does
@@ -27,7 +29,7 @@ TuitionHub is a static single-page app: Vercel builds it with Vite and serves `d
 
    Vite bakes these into the JavaScript bundle at build time. If they are missing, the build still succeeds, but the deployed page shows a blank screen with `Missing VITE_SUPABASE_URL…` in the console. Redeploy after changing them. Only use the **publishable** key here; never the `service_role` or secret key.
 3. **Allow the Vercel URLs in Supabase** (Authentication → URL Configuration):
-   - **Site URL:** your production URL, e.g. `https://tuitionhub.vercel.app`
+   - **Site URL:** your production URL, currently `https://tuitionhub-tutoring-marketplace.vercel.app`
    - **Redirect URLs:** add the production URL, `https://*-<your-team>.vercel.app/**` for preview deployments, and `http://localhost:8443/**` for local development
 
    Confirmation and password-reset emails redirect to `window.location.origin`. If that origin isn't on the list, Supabase sends users to the Site URL instead.
