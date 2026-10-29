@@ -28,7 +28,7 @@ Other scripts: `pnpm build`, `pnpm preview`, `pnpm format`.
 | | Link |
 | --- | --- |
 | Source code | <https://github.com/Razia-rosie/tuitionhub-tutoring-marketplace> |
-| Live app | <https://tuitionhub-tutoring-marketplace.vercel.app> |
+| Live app | <https://tuitionhubbd.vercel.app> (also served at <https://tuitionhub-tutoring-marketplace.vercel.app>) |
 | Vercel project | [rosie-e9ad/tuitionhub-tutoring-marketplace](https://vercel.com/rosie-e9ad/tuitionhub-tutoring-marketplace) (team access only) |
 | One-click deploy | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FRazia-rosie%2Ftuitionhub-tutoring-marketplace&env=VITE_SUPABASE_URL,VITE_SUPABASE_PUBLISHABLE_KEY&envDescription=Supabase%20project%20URL%20and%20publishable%20key&envLink=https%3A%2F%2Fgithub.com%2FRazia-rosie%2Ftuitionhub-tutoring-marketplace%2Fblob%2Fmain%2Fdocs%2FDEPLOYMENT.md) |
 | Deployment guide | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
